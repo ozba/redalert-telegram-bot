@@ -96,6 +96,11 @@ Share your GPS location and the bot finds the nearest shelters with addresses, d
 
 <img src="examples/location-shelters.jpg" width="400" alt="Location-based shelter search showing nearest shelters with details" />
 
+### Alert Statistics by Origin
+> "מה הסטטיסטיקות של התראות הטילים מאירן?"
+
+<img src="examples/iran-statistics.jpg" width="400" alt="Iran missile alert statistics showing 501 alerts across 500 cities in 22 zones" />
+
 ### More Example Queries
 
 - "Are there active alerts right now?"
