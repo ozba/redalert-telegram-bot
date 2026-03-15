@@ -50,30 +50,31 @@ export function createBot(
 
   bot.command("start", async (ctx) => {
     await ctx.reply(
-      `Welcome to RedAlert Bot!\n\n` +
-        `I can help you with Israel's emergency alert system:\n\n` +
-        `- Check active alerts right now\n` +
-        `- Find nearby shelters by city\n` +
-        `- Get alert statistics and history\n` +
-        `- Look up city information\n\n` +
-        `Just send me a message in English or Hebrew!\n\n` +
-        `Type /help for more details.`,
+      `ברוכים הבאים לבוט צבע אדום! 🚨\n\n` +
+        `אני יכול לעזור לך עם מערכת ההתרעות של פיקוד העורף:\n\n` +
+        `- בדיקת התראות פעילות כרגע\n` +
+        `- חיפוש מקלטים קרובים לפי עיר או שיתוף מיקום 📍\n` +
+        `- סטטיסטיקות והיסטוריית התראות\n` +
+        `- חיפוש מידע על ערים\n\n` +
+        `פשוט שלח לי הודעה בעברית או באנגלית!\n\n` +
+        `הקלד /help לפרטים נוספים.`,
     );
   });
 
   bot.command("help", async (ctx) => {
     await ctx.reply(
-      `RedAlert Bot Commands:\n\n` +
-        `/start - Welcome message\n` +
-        `/help - This help message\n` +
-        `/status - Bot and MCP server status\n` +
-        `/alerts - Quick check for active alerts\n` +
-        `/shelters <city> - Find shelters near a city\n` +
-        `/clear - Reset conversation history\n\n` +
-        `Or just ask me anything in natural language:\n` +
-        `- "Show me active alerts"\n` +
-        `- "Find shelters near Tel Aviv"\n` +
-        `- "How many alerts were there this week?"`,
+      `פקודות הבוט:\n\n` +
+        `/start - הודעת פתיחה\n` +
+        `/help - הודעת עזרה\n` +
+        `/status - סטטוס הבוט והשרת\n` +
+        `/alerts - בדיקת התראות פעילות\n` +
+        `/shelters <עיר> - חיפוש מקלטים ליד עיר\n` +
+        `/clear - איפוס היסטוריית שיחה\n\n` +
+        `או פשוט שאל אותי בשפה חופשית:\n` +
+        `- "תראה לי התראות פעילות"\n` +
+        `- "חפש מקלטים ליד תל אביב"\n` +
+        `- "כמה התראות היו השבוע?"\n\n` +
+        `אפשר גם לשתף מיקום כדי למצוא את המקלטים הקרובים אליך!`,
     );
   });
 
@@ -113,6 +114,18 @@ export function createBot(
     await handleTextMessage(
       ctx,
       `Find shelters near ${city}`,
+      mcpClient,
+      claudeBridge,
+      conversationManager,
+    );
+  });
+
+  bot.on("location", async (ctx) => {
+    if (!ctx.from) return;
+    const { latitude, longitude } = ctx.message.location;
+    await handleTextMessage(
+      ctx,
+      `Find the nearest shelters to my location at lat=${latitude}, lon=${longitude}. Show the 5 closest ones with distance and address.`,
       mcpClient,
       claudeBridge,
       conversationManager,

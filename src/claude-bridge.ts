@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { McpClientManager } from "./mcp-client.js";
-import { SYSTEM_PROMPT } from "./system-prompt.js";
+import { getSystemPrompt } from "./system-prompt.js";
 import type { UserConversation, ConversationManager } from "./conversation.js";
 import { logger } from "./logger.js";
 
@@ -16,6 +16,7 @@ function truncateToolResult(text: string): string {
     "\n\n[Result truncated — too large to display in full]"
   );
 }
+
 
 export class ClaudeBridge {
   private anthropic: Anthropic;
@@ -40,13 +41,27 @@ export class ClaudeBridge {
     const tools = this.mcpClient.tools;
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
-      const response = await this.anthropic.messages.create({
-        model: MODEL,
-        max_tokens: MAX_TOKENS,
-        system: SYSTEM_PROMPT,
-        messages: conv.messages,
-        tools,
-      });
+      let response: Anthropic.Message;
+      try {
+        response = await this.anthropic.messages.create({
+          model: MODEL,
+          max_tokens: MAX_TOKENS,
+          system: getSystemPrompt(),
+          messages: conv.messages,
+          tools,
+        });
+      } catch (error: unknown) {
+        // If conversation history is corrupted (orphaned tool_result), reset and retry
+        if (error instanceof Anthropic.BadRequestError &&
+            String(error.message).includes("tool_result")) {
+          logger.warn("Corrupted conversation history detected, resetting");
+          const lastUserMsg = conv.messages.filter(m => m.role === "user" && typeof m.content === "string").pop();
+          conv.messages = lastUserMsg ? [lastUserMsg] : [];
+          conv.totalTokensUsed = 0;
+          if (conv.messages.length > 0) continue; // retry with clean history
+        }
+        throw error;
+      }
 
       this.conversationManager.updateTokenUsage(conv, response.usage);
       logger.debug(

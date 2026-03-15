@@ -36,10 +36,17 @@ export class ConversationManager {
     if (conv.totalTokensUsed > AGGRESSIVE_TRIM_TOKEN_THRESHOLD) {
       conv.messages = conv.messages.slice(-10);
       conv.totalTokensUsed = 0;
-      return;
     }
 
     while (conv.messages.length > MAX_MESSAGES) {
+      conv.messages.shift();
+    }
+
+    // Ensure conversation doesn't start with a tool_result (orphaned from trim)
+    // or an assistant message. Must start with a user text message.
+    while (conv.messages.length > 0) {
+      const first = conv.messages[0];
+      if (first.role === "user" && typeof first.content === "string") break;
       conv.messages.shift();
     }
   }
