@@ -76,20 +76,25 @@ npm run docker:run
 
 ## Examples
 
+### Current Active Alerts
+> "מה ההתראות הפעילות?"
+
+<img src="examples/current-alerts.jpg" width="400" alt="Current active alerts showing missiles and news flash alerts across Israel" />
+
+### Alerts in a Specific City
+> "אילו התראות היו בכפר סבא?"
+
+<img src="examples/alert-in-Kfar-Saba.jpg" width="400" alt="Alert history for Kfar Saba showing missile alerts with Israel timestamps" />
+
 ### Missile Alerts Query
 > "פרט לי את כל ההתראות טילים שהיו היום באילת"
 
-<img src="examples/eilat-missile-alerts.jpg" width="400" alt="Eilat missile alerts query showing 8 missile alerts with timestamps in Israel time" />
+<img src="examples/eilat-missile-alerts.jpg" width="400" alt="Eilat missile alerts query showing missile alerts with timestamps in Israel time" />
 
 ### Shelter Search by Location
-Share your GPS location and the bot finds the 5 nearest shelters with addresses, distances, and capacity.
+Share your GPS location and the bot finds the nearest shelters with addresses, distances, and capacity.
 
-<img src="examples/location-shelters.jpg" width="400" alt="Location-based shelter search showing 5 nearest shelters with details" />
-
-### Shelter Search by Address
-> "תמצא לי מקלטים ליד דיזינגוף 20 תל אביב"
-
-<img src="examples/dizengoff-shelters.jpg" width="400" alt="Shelter search near Dizengoff 20 Tel Aviv showing 5 shelters with details" />
+<img src="examples/location-shelters.jpg" width="400" alt="Location-based shelter search showing nearest shelters with details" />
 
 ### More Example Queries
 
