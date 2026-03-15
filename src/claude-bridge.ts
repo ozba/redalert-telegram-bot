@@ -4,7 +4,7 @@ import { getSystemPrompt } from "./system-prompt.js";
 import type { UserConversation, ConversationManager } from "./conversation.js";
 import { logger } from "./logger.js";
 
-const MODEL = "claude-sonnet-4-20250514";
+const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 2048;
 const MAX_ITERATIONS = 10;
 const MAX_TOOL_RESULT_BYTES = 50_000;

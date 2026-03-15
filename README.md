@@ -74,7 +74,24 @@ npm run docker:run
 | `/shelters <city>` | Find shelters near a city |
 | `/clear` | Reset conversation history |
 
-## Example Queries
+## Examples
+
+### Missile Alerts Query
+> "פרט לי את כל ההתראות טילים שהיו היום באילת"
+
+<img src="examples/eilat-missile-alerts.jpg" width="400" alt="Eilat missile alerts query showing 8 missile alerts with timestamps in Israel time" />
+
+### Shelter Search by Location
+Share your GPS location and the bot finds the 5 nearest shelters with addresses, distances, and capacity.
+
+<img src="examples/location-shelters.jpg" width="400" alt="Location-based shelter search showing 5 nearest shelters with details" />
+
+### Shelter Search by Address
+> "תמצא לי מקלטים ליד דיזינגוף 20 תל אביב"
+
+<img src="examples/dizengoff-shelters.jpg" width="400" alt="Shelter search near Dizengoff 20 Tel Aviv showing 5 shelters with details" />
+
+### More Example Queries
 
 - "Are there active alerts right now?"
 - "תראה לי את כל ההתראות בכפר סבא בשבוע האחרון"
