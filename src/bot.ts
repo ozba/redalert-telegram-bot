@@ -6,8 +6,10 @@ import type { McpClientManager } from "./mcp-client.js";
 import type { ClaudeBridge } from "./claude-bridge.js";
 import type { ConversationManager } from "./conversation.js";
 import { checkRateLimit, getRateLimitMessage } from "./rate-limiter.js";
+import { UserTracker } from "./user-tracker.js";
 
 const startTime = Date.now();
+const userTracker = new UserTracker();
 
 function formatUptime(): string {
   const ms = Date.now() - startTime;
@@ -87,6 +89,21 @@ export function createBot(
     );
   });
 
+  bot.command("stats", async (ctx) => {
+    const username = ctx.from?.username ?? "";
+    const adminUsername = process.env.BOT_ADMIN_USERNAME ?? "";
+    if (!adminUsername || username !== adminUsername) {
+      await ctx.reply("❌");
+      return;
+    }
+    await ctx.reply(
+      `📊 Bot Stats\n---\n` +
+      `Users: ${userTracker.uniqueUserCount}\n` +
+      `Total messages: ${userTracker.totalMessageCount}\n` +
+      `Uptime: ${formatUptime()}`
+    );
+  });
+
   bot.command("clear", async (ctx) => {
     if (!ctx.from) return;
     conversationManager.clear(ctx.from.id);
@@ -125,10 +142,11 @@ export function createBot(
     const { latitude, longitude } = ctx.message.location;
     await handleTextMessage(
       ctx,
-      `Find the nearest shelters to my location at lat=${latitude}, lon=${longitude}. Show the 5 closest ones with distance and address.`,
+      `מצא את 5 המקלטים הקרובים ביותר למיקום שלי: lat=${latitude}, lon=${longitude}. הצג מרחק וכתובת.`,
       mcpClient,
       claudeBridge,
       conversationManager,
+      true, // skip rate limit for location messages
     );
   });
 
@@ -150,11 +168,13 @@ async function handleTextMessage(
   mcpClient: McpClientManager,
   claudeBridge: ClaudeBridge,
   conversationManager: ConversationManager,
+  skipRateLimit = false,
 ): Promise<void> {
   const userId = ctx.from!.id;
+  userTracker.track(userId);
 
-  // Rate limit check
-  const rateCheck = checkRateLimit(userId);
+  // Rate limit check (skipped for location messages)
+  const rateCheck = skipRateLimit ? { allowed: true } : checkRateLimit(userId);
   if (!rateCheck.allowed) {
     await ctx.reply(getRateLimitMessage(rateCheck.retryAfterSec));
     return;
