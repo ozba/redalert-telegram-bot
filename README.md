@@ -101,6 +101,11 @@ Share your GPS location and the bot finds the nearest shelters with addresses, d
 
 <img src="examples/iran-statistics.jpg" width="400" alt="Iran missile alert statistics showing 501 alerts across 500 cities in 22 zones" />
 
+### Smart Analysis - Best Surfing Hours
+> "מתי הכי בטוח לגלוש בהרצליה?"
+
+<img src="examples/surfing-analysis.jpg" width="400" alt="Analysis of safest surfing hours in Herzliya based on missile alert distribution" />
+
 ### More Example Queries
 
 - "Are there active alerts right now?"
