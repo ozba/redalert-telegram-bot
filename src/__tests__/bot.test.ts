@@ -58,6 +58,7 @@ function createMockCtx(overrides: Record<string, any> = {}) {
     chat: { id: 456 },
     message: { text: "/start" },
     reply: vi.fn().mockResolvedValue(undefined),
+    replyWithVenue: vi.fn().mockResolvedValue(undefined),
     sendChatAction: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   } as any;
@@ -76,7 +77,7 @@ function createMockMcpClient() {
 
 function createMockClaudeBridge() {
   return {
-    runAgenticLoop: vi.fn().mockResolvedValue("Bot response"),
+    runAgenticLoop: vi.fn().mockResolvedValue({ text: "Bot response", shelters: [] }),
   } as any;
 }
 
@@ -120,7 +121,7 @@ describe("bot", () => {
       await handlers["command:start"](ctx);
       expect(ctx.reply).toHaveBeenCalledTimes(1);
       const msg = ctx.reply.mock.calls[0][0];
-      expect(msg).toContain("Welcome");
+      expect(msg).toContain("ברוכים הבאים");
       expect(msg).toContain("/help");
     });
   });
@@ -203,7 +204,7 @@ describe("bot", () => {
       expect(ctx.sendChatAction).toHaveBeenCalledWith("typing");
       expect(convManager.getOrCreate).toHaveBeenCalledWith(123);
       expect(claudeBridge.runAgenticLoop).toHaveBeenCalled();
-      expect(ctx.reply).toHaveBeenCalledWith("Bot response");
+      expect(ctx.reply).toHaveBeenCalledWith("Bot response", { parse_mode: "HTML" });
     });
 
     it("blocks rate-limited users", async () => {
@@ -247,6 +248,129 @@ describe("bot", () => {
       const ctx = createMockCtx({ from: undefined, message: { text: "Hi" } });
       await handlers["on:text"](ctx);
       expect(claudeBridge.runAgenticLoop).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("venue pin sending", () => {
+    it("sends a venue pin for the nearest shelter after text response", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "Found shelters near Tel Aviv.",
+        shelters: [
+          { lat: 32.08, lon: 34.78, name: "Shelter A", address: "123 Main St", distance: 100 },
+          { lat: 32.09, lon: 34.79, name: "Shelter B", address: "456 Other St", distance: 200 },
+        ],
+      });
+
+      const ctx = createMockCtx({ message: { text: "Find shelters near Tel Aviv" } });
+      await handlers["on:text"](ctx);
+
+      expect(ctx.replyWithVenue).toHaveBeenCalledTimes(1);
+      expect(ctx.replyWithVenue).toHaveBeenCalledWith(
+        32.08,
+        34.78,
+        "Shelter A",
+        "123 Main St",
+        { disable_notification: true },
+      );
+    });
+
+    it("does not send venue pin when no shelters are returned", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "No shelters found.",
+        shelters: [],
+      });
+
+      const ctx = createMockCtx({ message: { text: "Show me alerts" } });
+      await handlers["on:text"](ctx);
+
+      expect(ctx.replyWithVenue).not.toHaveBeenCalled();
+    });
+
+    it("sends only one venue pin even with multiple shelters", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "Found 3 shelters.",
+        shelters: [
+          { lat: 32.08, lon: 34.78, name: "Nearest", address: "Addr 1", distance: 50 },
+          { lat: 32.09, lon: 34.79, name: "Middle", address: "Addr 2", distance: 150 },
+          { lat: 32.10, lon: 34.80, name: "Farthest", address: "Addr 3", distance: 300 },
+        ],
+      });
+
+      const ctx = createMockCtx({ message: { text: "Find shelters" } });
+      await handlers["on:text"](ctx);
+
+      expect(ctx.replyWithVenue).toHaveBeenCalledTimes(1);
+      expect(ctx.replyWithVenue).toHaveBeenCalledWith(
+        32.08, 34.78, "Nearest", "Addr 1", { disable_notification: true },
+      );
+    });
+
+    it("uses fallback address when shelter address is empty", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "Found a shelter.",
+        shelters: [
+          { lat: 32.08, lon: 34.78, name: "Shelter X", address: "", distance: 100 },
+        ],
+      });
+
+      const ctx = createMockCtx({ message: { text: "Find shelters" } });
+      await handlers["on:text"](ctx);
+
+      expect(ctx.replyWithVenue).toHaveBeenCalledWith(
+        32.08, 34.78, "Shelter X", "Shelter", { disable_notification: true },
+      );
+    });
+
+    it("handles venue send failure gracefully without crashing", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "Found shelters.",
+        shelters: [
+          { lat: 32.08, lon: 34.78, name: "Shelter A", address: "123 Main St", distance: 100 },
+        ],
+      });
+
+      const ctx = createMockCtx({ message: { text: "Find shelters" } });
+      ctx.replyWithVenue.mockRejectedValueOnce(new Error("Telegram API error"));
+
+      await handlers["on:text"](ctx);
+
+      // Should not throw - the text reply should still have been sent
+      expect(ctx.reply).toHaveBeenCalledWith("Found shelters.", { parse_mode: "HTML" });
+      expect(ctx.replyWithVenue).toHaveBeenCalledTimes(1);
+    });
+
+    it("sends venue pin after /shelters command", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "Shelters near Haifa.",
+        shelters: [
+          { lat: 32.79, lon: 34.99, name: "Haifa Shelter", address: "Harbor Rd", distance: 75 },
+        ],
+      });
+
+      const ctx = createMockCtx({ message: { text: "/shelters Haifa" } });
+      await handlers["command:shelters"](ctx);
+
+      expect(ctx.replyWithVenue).toHaveBeenCalledWith(
+        32.79, 34.99, "Haifa Shelter", "Harbor Rd", { disable_notification: true },
+      );
+    });
+
+    it("sends venue pin after location share", async () => {
+      claudeBridge.runAgenticLoop.mockResolvedValueOnce({
+        text: "Nearest shelters to your location.",
+        shelters: [
+          { lat: 31.77, lon: 35.21, name: "Nearby Shelter", address: "Jerusalem Blvd", distance: 30 },
+        ],
+      });
+
+      const ctx = createMockCtx({
+        message: { location: { latitude: 31.77, longitude: 35.21 } },
+      });
+      await handlers["on:location"](ctx);
+
+      expect(ctx.replyWithVenue).toHaveBeenCalledWith(
+        31.77, 35.21, "Nearby Shelter", "Jerusalem Blvd", { disable_notification: true },
+      );
     });
   });
 

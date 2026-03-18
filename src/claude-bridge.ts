@@ -4,6 +4,19 @@ import { getSystemPrompt } from "./system-prompt.js";
 import type { UserConversation, ConversationManager } from "./conversation.js";
 import { logger } from "./logger.js";
 
+export interface ShelterLocation {
+  lat: number;
+  lon: number;
+  name: string;
+  address: string;
+  distance?: number;
+}
+
+export interface AgenticLoopResult {
+  text: string;
+  shelters: ShelterLocation[];
+}
+
 const MODEL = "claude-haiku-4-5-20251001";
 const MAX_TOKENS = 2048;
 const MAX_ITERATIONS = 10;
@@ -37,8 +50,9 @@ export class ClaudeBridge {
    * Sends messages to Claude with available tools, executes tool calls via MCP,
    * and loops until Claude returns a final text response.
    */
-  async runAgenticLoop(conv: UserConversation): Promise<string> {
+  async runAgenticLoop(conv: UserConversation): Promise<AgenticLoopResult> {
     const tools = this.mcpClient.tools;
+    const shelters: ShelterLocation[] = [];
 
     for (let i = 0; i < MAX_ITERATIONS; i++) {
       let response: Anthropic.Message;
@@ -80,10 +94,10 @@ export class ClaudeBridge {
       // If no tool calls or stop reason is end_turn, we're done
       if (toolUses.length === 0 || response.stop_reason === "end_turn") {
         conv.messages.push({ role: "assistant", content: response.content });
-        return (
-          textParts.join("\n") ||
-          "I couldn't generate a response. Please try again."
-        );
+        return {
+          text: textParts.join("\n") || "I couldn't generate a response. Please try again.",
+          shelters,
+        };
       }
 
       // Append assistant response (with tool_use blocks) to history
@@ -97,6 +111,27 @@ export class ClaudeBridge {
               toolUse.name,
               toolUse.input as Record<string, unknown>,
             );
+
+            // Extract shelter locations from search_shelters results
+            if (toolUse.name === "search_shelters" && !result.isError) {
+              try {
+                const parsed = JSON.parse(result.content);
+                const items = Array.isArray(parsed) ? parsed : parsed?.shelters ?? [];
+                for (const s of items) {
+                  if (typeof s.lat === "number" && typeof s.lon === "number") {
+                    shelters.push({
+                      lat: s.lat,
+                      lon: s.lon,
+                      name: s.name ?? "Shelter",
+                      address: s.address ?? "",
+                      distance: typeof s.distance === "number" ? s.distance : undefined,
+                    });
+                  }
+                }
+              } catch {
+                // JSON parse failed — skip shelter extraction
+              }
+            }
 
             return {
               type: "tool_result" as const,
@@ -119,6 +154,9 @@ export class ClaudeBridge {
       conv.messages.push({ role: "user", content: toolResults });
     }
 
-    return "I was unable to complete the request within the allowed number of steps. Please try a simpler question.";
+    return {
+      text: "I was unable to complete the request within the allowed number of steps. Please try a simpler question.",
+      shelters,
+    };
   }
 }

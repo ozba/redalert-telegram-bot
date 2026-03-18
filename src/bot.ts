@@ -3,7 +3,7 @@ import type { Context } from "telegraf";
 import { config } from "./config.js";
 import { logger } from "./logger.js";
 import type { McpClientManager } from "./mcp-client.js";
-import type { ClaudeBridge } from "./claude-bridge.js";
+import type { ClaudeBridge, AgenticLoopResult } from "./claude-bridge.js";
 import type { ConversationManager } from "./conversation.js";
 import { checkRateLimit, getRateLimitMessage } from "./rate-limiter.js";
 import { UserTracker } from "./user-tracker.js";
@@ -23,22 +23,23 @@ function formatUptime(): string {
 
 async function sendLongMessage(ctx: Context, text: string): Promise<void> {
   const MAX_LENGTH = 4096;
+  const opts = { parse_mode: "HTML" as const };
   if (text.length <= MAX_LENGTH) {
-    await ctx.reply(text);
+    await ctx.reply(text, opts).catch(() => ctx.reply(text));
     return;
   }
 
   let remaining = text;
   while (remaining.length > 0) {
     if (remaining.length <= MAX_LENGTH) {
-      await ctx.reply(remaining);
+      await ctx.reply(remaining, opts).catch(() => ctx.reply(remaining));
       break;
     }
 
     let splitAt = remaining.lastIndexOf("\n", MAX_LENGTH);
     if (splitAt <= 0) splitAt = MAX_LENGTH;
-
-    await ctx.reply(remaining.slice(0, splitAt));
+    const chunk = remaining.slice(0, splitAt);
+    await ctx.reply(chunk, opts).catch(() => ctx.reply(chunk));
     remaining = remaining.slice(splitAt).trimStart();
   }
 }
@@ -90,10 +91,8 @@ export function createBot(
   });
 
   bot.command("stats", async (ctx) => {
-    const username = ctx.from?.username ?? "";
-    const adminUsername = process.env.BOT_ADMIN_USERNAME ?? "";
-    if (!adminUsername || username !== adminUsername) {
-      await ctx.reply("❌");
+    const adminId = process.env.BOT_ADMIN_ID ?? "";
+    if (!adminId || String(ctx.from?.id) !== adminId) {
       return;
     }
     await ctx.reply(
@@ -204,9 +203,25 @@ async function handleTextMessage(
     const conv = conversationManager.getOrCreate(userId);
     conv.messages.push({ role: "user", content: text });
 
-    const response = await claudeBridge.runAgenticLoop(conv);
+    const result: AgenticLoopResult = await claudeBridge.runAgenticLoop(conv);
 
-    await sendLongMessage(ctx, response);
+    await sendLongMessage(ctx, result.text);
+
+    // Send a venue pin for the nearest shelter if shelters were found
+    if (result.shelters.length > 0) {
+      const nearest = result.shelters[0];
+      try {
+        await ctx.replyWithVenue(
+          nearest.lat,
+          nearest.lon,
+          nearest.name,
+          nearest.address || "Shelter",
+          { disable_notification: true },
+        );
+      } catch (err) {
+        logger.warn({ err }, "Failed to send venue pin");
+      }
+    }
 
     conv.lastActivity = Date.now();
     conversationManager.trim(conv);

@@ -1,7 +1,7 @@
 const LIMITS = {
-  perMinute: 5,
-  perHour: 30,
-  perDay: 100,
+  perMinute: 3,
+  perHour: 6,
+  perDay: 50,
 } as const;
 
 const WINDOWS = {

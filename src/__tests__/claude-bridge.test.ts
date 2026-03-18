@@ -68,7 +68,8 @@ describe("ClaudeBridge", () => {
       });
 
       const result = await bridge.runAgenticLoop(conv);
-      expect(result).toBe("Hi there!");
+      expect(result.text).toBe("Hi there!");
+      expect(result.shelters).toEqual([]);
     });
 
     it("returns fallback when Claude gives empty text", async () => {
@@ -83,7 +84,8 @@ describe("ClaudeBridge", () => {
       });
 
       const result = await bridge.runAgenticLoop(conv);
-      expect(result).toContain("couldn't generate");
+      expect(result.text).toContain("couldn't generate");
+      expect(result.shelters).toEqual([]);
     });
 
     it("executes tool calls and loops", async () => {
@@ -122,7 +124,8 @@ describe("ClaudeBridge", () => {
       });
 
       const result = await bridge.runAgenticLoop(conv);
-      expect(result).toBe("There are no active alerts right now.");
+      expect(result.text).toBe("There are no active alerts right now.");
+      expect(result.shelters).toEqual([]);
       expect(mcpClient.callTool).toHaveBeenCalledWith("get_active_alerts", {});
       expect(mockMessagesCreate).toHaveBeenCalledTimes(2);
     });
@@ -160,7 +163,7 @@ describe("ClaudeBridge", () => {
       });
 
       const result = await bridge.runAgenticLoop(conv);
-      expect(result).toBe("Sorry, I couldn't fetch the alerts.");
+      expect(result.text).toBe("Sorry, I couldn't fetch the alerts.");
 
       // Verify the tool error was sent back to Claude
       const lastUserMsg = conv.messages.find(
@@ -202,7 +205,7 @@ describe("ClaudeBridge", () => {
       }
 
       const result = await bridge.runAgenticLoop(conv);
-      expect(result).toContain("unable to complete");
+      expect(result.text).toContain("unable to complete");
       expect(mockMessagesCreate).toHaveBeenCalledTimes(10);
     });
 
@@ -251,8 +254,155 @@ describe("ClaudeBridge", () => {
       });
 
       const result = await bridge.runAgenticLoop(conv);
-      expect(result).toBe("Here are the alerts and shelters.");
+      expect(result.text).toBe("Here are the alerts and shelters.");
       expect(mcpClient.callTool).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("shelter extraction from search_shelters tool results", () => {
+    const shelterTools = [
+      { name: "search_shelters", description: "Search shelters", input_schema: { type: "object" } },
+    ];
+
+    function setupShelterTest(mcpResult: { content: string; isError: boolean }) {
+      const { bridge, mcpClient } = getBridge(shelterTools);
+      const conv = conversationManager.getOrCreate(1);
+      conv.messages.push({ role: "user", content: "Find shelters" });
+
+      mockMessagesCreate.mockResolvedValueOnce({
+        content: [
+          { type: "tool_use", id: "t1", name: "search_shelters", input: {} },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 50, output_tokens: 30 },
+      });
+
+      mcpClient.callTool.mockResolvedValueOnce(mcpResult);
+
+      mockMessagesCreate.mockResolvedValueOnce({
+        content: [{ type: "text", text: "Done." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 80, output_tokens: 20 },
+      });
+
+      return { bridge, conv };
+    }
+
+    it("extracts shelters from JSON array response", async () => {
+      const shelterData = [
+        { lat: 32.79, lon: 34.99, name: "Shelter 1", address: "Addr 1", distance: 50 },
+        { lat: 32.80, lon: 35.00, name: "Shelter 2", address: "Addr 2", distance: 200 },
+      ];
+      const { bridge, conv } = setupShelterTest({
+        content: JSON.stringify(shelterData),
+        isError: false,
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toHaveLength(2);
+      expect(result.shelters[0]).toEqual({
+        lat: 32.79, lon: 34.99, name: "Shelter 1", address: "Addr 1", distance: 50,
+      });
+      expect(result.shelters[1]).toEqual({
+        lat: 32.80, lon: 35.00, name: "Shelter 2", address: "Addr 2", distance: 200,
+      });
+    });
+
+    it("extracts shelters from object with shelters property", async () => {
+      const { bridge, conv } = setupShelterTest({
+        content: JSON.stringify({
+          shelters: [
+            { lat: 31.77, lon: 35.21, name: "Jerusalem Shelter", address: "Old City" },
+          ],
+        }),
+        isError: false,
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toHaveLength(1);
+      expect(result.shelters[0]).toEqual({
+        lat: 31.77, lon: 35.21, name: "Jerusalem Shelter", address: "Old City", distance: undefined,
+      });
+    });
+
+    it("uses defaults for missing name and address fields", async () => {
+      const { bridge, conv } = setupShelterTest({
+        content: JSON.stringify([{ lat: 32.0, lon: 34.8 }]),
+        isError: false,
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toHaveLength(1);
+      expect(result.shelters[0].name).toBe("Shelter");
+      expect(result.shelters[0].address).toBe("");
+      expect(result.shelters[0].distance).toBeUndefined();
+    });
+
+    it("skips entries without valid lat/lon", async () => {
+      const { bridge, conv } = setupShelterTest({
+        content: JSON.stringify([
+          { lat: 32.0, lon: 34.8, name: "Valid" },
+          { lat: "not-a-number", lon: 34.8, name: "Invalid lat" },
+          { lon: 34.8, name: "Missing lat" },
+          { lat: 32.0, name: "Missing lon" },
+        ]),
+        isError: false,
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toHaveLength(1);
+      expect(result.shelters[0].name).toBe("Valid");
+    });
+
+    it("does not extract shelters when search_shelters returns an error", async () => {
+      const { bridge, conv } = setupShelterTest({
+        content: JSON.stringify([{ lat: 32.0, lon: 34.8, name: "Should not appear" }]),
+        isError: true,
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toEqual([]);
+    });
+
+    it("handles invalid JSON in search_shelters result gracefully", async () => {
+      const { bridge, conv } = setupShelterTest({
+        content: "This is not valid JSON",
+        isError: false,
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toEqual([]);
+    });
+
+    it("does not extract shelters for non-shelter tool calls", async () => {
+      const tools = [
+        { name: "get_active_alerts", description: "Get alerts", input_schema: { type: "object" } },
+      ];
+      const { bridge, mcpClient } = getBridge(tools);
+      const conv = conversationManager.getOrCreate(1);
+      conv.messages.push({ role: "user", content: "Show alerts" });
+
+      mockMessagesCreate.mockResolvedValueOnce({
+        content: [
+          { type: "tool_use", id: "t1", name: "get_active_alerts", input: {} },
+        ],
+        stop_reason: "tool_use",
+        usage: { input_tokens: 50, output_tokens: 30 },
+      });
+
+      mcpClient.callTool.mockResolvedValueOnce({
+        content: JSON.stringify([{ lat: 32.0, lon: 34.8, name: "Not a shelter" }]),
+        isError: false,
+      });
+
+      mockMessagesCreate.mockResolvedValueOnce({
+        content: [{ type: "text", text: "Active alerts." }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 80, output_tokens: 20 },
+      });
+
+      const result = await bridge.runAgenticLoop(conv);
+      expect(result.shelters).toEqual([]);
     });
   });
 });

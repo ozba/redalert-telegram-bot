@@ -7,8 +7,8 @@ interface TrackerData {
   firstSeen: Record<number, string>; // userId -> ISO timestamp
 }
 
-const DATA_DIR = process.env.TRACKER_DATA_DIR || "/data";
-const DATA_FILE = `${DATA_DIR}/stats.json`;
+const DATA_DIR = process.env.TRACKER_DATA_DIR || "/tmp";
+const DATA_FILE = DATA_DIR + "/stats.json";
 
 function loadData(): TrackerData {
   try {
